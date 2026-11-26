@@ -3,8 +3,8 @@ import time
 import csv
 import statistics
 from pathlib import Path
-from mini_gpt import MiniGPT
-
+from src.kv_gpt import MiniGPT
+import os
 
 torch.manual_seed(42)
 
@@ -142,7 +142,7 @@ for length in lengths:
 
 
 # Save every individual experiment
-csv_path = Path(__file__).resolve().parent.parent / "experiments.csv"
+csv_path = Path(__file__).resolve().parent / "experiments.csv"
 
 write_header = (
     not csv_path.exists() or csv_path.stat().st_size == 0

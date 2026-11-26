@@ -185,41 +185,29 @@ class MiniGPT(nn.Module):
             )
 
         return history
-    
-    def flush_cache(self, cache,drop):
-        assert 0 < drop < self.context_window
-        new_cache = []
-        keep = self.context_window - drop
-        for k_h, v_h in cache:
-            k = k_h[:, :, -keep:, :]
-            v = v_h[:, :, -keep:, :]
-            new_cache.append((k, v))
-        return new_cache
 
     @torch.no_grad()
-    def generate(self, source, max_new_tokens=20,use_cache=True,drop_cache = 16):
+    def generate(self,source,max_new_tokens=20,use_cache=True,drop_cache=16):
         self.eval()
+        assert 0 < drop_cache < self.context_window
         kv_cache = None
         generated = source
-        offset = 0
+        context = source[:, -self.context_window:]
         for _ in range(max_new_tokens):
+            if context.size(1) > self.context_window:
+                context = context[:, drop_cache:]
+                kv_cache = None
             if use_cache:
                 if kv_cache is None:
-                    model_input = generated[:, -self.context_window:]
-                    offset = generated.size(1) - model_input.size(1)
+                    model_input = context
                 else:
-                    if kv_cache[0][0].size(2) >= self.context_window:
-                        old_len = kv_cache[0][0].size(2)
-                        kv_cache = self.flush_cache(kv_cache,drop_cache)
-                        new_len = kv_cache[0][0].size(2)
-                        offset += old_len - new_len
-                    model_input = generated[:, -1:]
-                logits, kv_cache = self(model_input,offset,kv_cache=kv_cache,use_cache=True,)
+                    model_input = context[:, -1:]
+                logits, kv_cache = self(model_input,offset=0,kv_cache=kv_cache,use_cache=True)
             else:
-                model_input = generated[:, -self.context_window:]
-                logits = self(model_input,offset=generated.size(1) - model_input.size(1),use_cache=False)
+                logits = self(context,offset=0,use_cache=False)
             next_token = torch.argmax(logits[:, -1, :],dim=-1,keepdim=True)
             generated = torch.cat([generated, next_token],dim=1)
+            context = torch.cat([context, next_token],dim=1)
         return generated
 
 if __name__ == "__main__":
@@ -227,10 +215,10 @@ if __name__ == "__main__":
     x = torch.randint(0, 100, (2, 6))
     model.eval()
     start = time.perf_counter()
-    without_cache = model.generate(x,max_new_tokens=100,use_cache=False,)
+    without_cache = model.generate(x,max_new_tokens=100,use_cache=False,drop_cache=16)
     without_cache_time = time.perf_counter() - start
     start = time.perf_counter()
-    with_cache = model.generate(x,max_new_tokens=100,use_cache=True,drop_cache=1)
+    with_cache = model.generate(x,max_new_tokens=100,use_cache=True,drop_cache=16)
     with_cache_time = time.perf_counter() - start
     print("Without cache:", without_cache_time)
     print("With cache:", with_cache_time)
